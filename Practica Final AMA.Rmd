@@ -1,0 +1,361 @@
+---
+title: "Practica Final - Curso MP con ML Covid18"
+author: "Isabel Rodríguez - Abril 2021"
+date: "12/4/2021"
+output:
+ pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+### Modelos Predictivos con ML - Clasificación para el fenómeno de Muerte - Covid 19 
+
+### I - Requerimientos
+
+
+## I.1 - Librerías Requeridas
+```{r libraries, echo=FALSE}
+library(data.table); library(rsample); library(caret); library(rpart)
+library(ROCR); library(pROC); library(naniar); library(vip)
+library(rpart.plot); library(randomForest); library(gridExtra); library(tinytex)
+```
+
+## I.2 - Base de datos (Balanceada)(Base_Bal2.csv)
+```{r Base_Bal2, echo=FALSE}
+Base_Bal2 <- fread("D:/Users/izamoranoh/Documents/R/Base_Bal2.csv")[,2:34]
+attach(Base_Bal2)
+```
+
+## I.3 - Partición Base de Datos Entrenamiento (Train) y Prueba(Test)
+```{r partition, echo=FALSE}
+set.seed(123)
+MUERE_split <- initial_split(Base_Bal2, prop = .7, strata = "MUERE")
+MUERE_train <- training(MUERE_split); attach(MUERE_train)
+MUERE_test <- testing(MUERE_split)
+```
+
+## I.4 - Verificación del peso de observaciones Si y No en las tres bases de datos
+```{r dimension, echo=FALSE}
+table(Base_Bal2$MUERE)/dim(Base_Bal2)[1]
+table(MUERE_train$MUERE)/dim(MUERE_train)[1]
+table(MUERE_test$MUERE)/dim(MUERE_test)[1]
+
+remove(Base_Bal2,MUERE_split)
+```
+
+### II - Regresión Logística
+
+### II - Modelo Predictivo Regresión Logística - Clasificación variable MUERE
+
+## II.1a - Definición Modelo Predictivo Regresión Logística 1 - base de datos training (MRLogTr)
+```{r MRLogTr, echo=FALSE}
+MRLogTr <- glm(MUE_D ~ EDAD + factor(SEXO) + factor(DIABETES) + 
+               factor(HIPERTENSION) +  factor(OBESIDAD) + factor(NEUMONIA)  +
+               factor(RENAL_CRONICA) + factor(INMUSUPR) +  factor(OTRA_COM) +
+               factor(TIPO_PACIENTE) + factor(TOMA_MUESTRA_LAB) +
+               factor(TOMA_MUESTRA_ANTIGENO) + factor(CLASIFICACION_FINAL) +
+               factor(ORIGEN) + factor(OTRO_CASO), family="binomial",
+               data=MUERE_train)
+summary(MRLogTr)
+```
+
+## II.1b - Definición Modelo Predictivo Regresión Logística 2 - base de datos testing (MRLogTe) 
+
+Para verificar solo si las variables son estadísticamente significativas bajo la dos bases de datos.
+
+```{r MRLogTe, echo=FALSE}
+MRLogTe <- glm(MUE_D ~ EDAD + factor(SEXO) + factor(DIABETES) + 
+               factor(HIPERTENSION) +  factor(OBESIDAD) + factor(NEUMONIA)  +
+               factor(RENAL_CRONICA) + factor(INMUSUPR) +  factor(OTRA_COM) +
+               factor(TIPO_PACIENTE) + factor(TOMA_MUESTRA_LAB) +
+               factor(TOMA_MUESTRA_ANTIGENO) + factor(CLASIFICACION_FINAL) +
+               factor(ORIGEN) + factor(OTRO_CASO), family="binomial",
+               data=MUERE_test)
+summary(MRLogTe)
+```
+
+## II.2 - Definición Validación Cruzada - Modelo de Regresión Logística training (cv_MRLogTr) 
+
+El modelo con el que se harán las predicciones es el que resulta de la validación cruzada y con el modelo resultante se hace una revisión del ajuste sobre la base testing y de esta forma se valida mediante el proceso analítico de ML.
+
+```{r cv_MRLogTr, echo=FALSE}
+set.seed(123)
+cv_MRLogTr <- train(MUERE ~ EDAD + factor(SEXO) + factor(DIABETES) + 
+                  factor(HIPERTENSION) + factor(OBESIDAD) + factor(NEUMONIA)  +
+                  factor(RENAL_CRONICA) + factor(INMUSUPR) +  factor(OTRA_COM) + 
+                  factor(TIPO_PACIENTE) + factor(TOMA_MUESTRA_LAB) + 
+                  factor(TOMA_MUESTRA_ANTIGENO) + factor(CLASIFICACION_FINAL) + 
+                  factor(ORIGEN) + factor(OTRO_CASO),data = MUERE_train,
+                  method = "glm", family = "binomial",
+                  trControl = trainControl(method = "cv", number = 10))
+cv_MRLogTr
+```
+## II.3 - Gráfico de las variables VIP - Modelo de Regresión Lógistica (cv_MRLogTr y cv_MRLogTe)
+
+Con los gráficos VIP se valida la importancia para los modelos de regresión logística desarrollados bajo las bases training y testing y después para el modelo resultante de la validación cruzada.
+
+```{r VIPMR, echo=FALSE}
+vip1 <- vip(MRLogTr, num_features = 30)
+vip2 <- vip(MRLogTe, num_features = 30)
+grid.arrange(vip1, vip2, nrow = 1)
+vip3 <- vip(cv_MRLogTr, num_features = 30)
+vip3
+```
+
+## II.4 - Tabla de Medidad de Rendimiento de la validación cruzada de cv_MRLogTr y cv_MRLogTe
+
+En esta tabla se muestran las estadísticas resultantes de los modelos resultantes utilizando 10 bases del remuestreo (calcula el Acurracy y el índice de Kappa ya que es un modelo predictivo de clasificación)
+
+```{r TabMed1, echo=FALSE}
+TabMed1 <- summary(resamples(list("Model 1" = cv_MRLogTr, "Model 1" = cv_MRLogTr)))
+TabMed1
+```
+
+## II.5 - Matriz de Confusión - Modelo de Regresión Lógistica (cv_MRLogTr con la base training) y cv_MRLogTr con la base de datos testing) 
+
+Con este paso se verifica el nivel de predicción del modelo óptimo resultante de la validación cruzada desarrollado con la base de entrenamiento o aprendizaje training y este mismo modelo se valida con la base de prueba testing y se verifican los dos resultados de las 2 matrices de confusión, las cuales deben mostrar valores muy similares para validar el desarrollo del modelo predictivo óptimo obtenido en la validación cruzada.
+
+```{r MCMRLog_Tr, echo=FALSE}
+# Construcción de la Matriz de Confusión con la base de datos training
+P_MRLogTr <- predict(cv_MRLogTr, MUERE_train)
+T_MRLogTr <- data.frame("Prediccion"=P_MRLogTr,"Observacion"=factor(MUERE_train$MUERE))
+T_MRLogTr2 <- table(T_MRLogTr$Prediccion, T_MRLogTr$Observacion)
+Con_MRLogTr <- confusionMatrix(T_MRLogTr2)
+Con_MRLogTr
+```
+
+```{r MCMRLog_Te, echo=FALSE}
+# Construcción de la Matriz de Confusión con la base de datos testing
+P_MRLogTe <- predict(cv_MRLogTr, MUERE_test)
+T_MRLogTe <- data.frame("Prediccion"=P_MRLogTe,"Observacion"=factor(MUERE_test$MUERE))
+T_MRLogTe2 <- table(T_MRLogTe$Prediccion, T_MRLogTe$Observacion)
+Con_MRLogTe <- confusionMatrix(T_MRLogTe2)
+Con_MRLogTe
+```
+
+## II.6 - Curva ROC y AUC  (cv_MRLogTr y cv_MRLogTe)
+
+En este proceso se encuentra la curva ROC y el AUC, con el modelo óptimo obtenido en la cv_MRLogTr utilizando la base training y la base testing, nuevamente se deben comparar los resultados obtenidos y verificar que estos resultados sean muy parecidos.
+
+```{r ROC_MRLog, echo=FALSE}
+### Curva ROC - datos training
+prMRLogTr <- predict(cv_MRLogTr, MUERE_train, type = "prob")$Si
+perfMRLogTr <- prediction(prMRLogTr, MUERE_train$MUERE) %>%
+performance(measure = "tpr", x.measure = "fpr")
+
+### Curva ROC - datos testing
+prMRLogTe <- predict(cv_MRLogTr, MUERE_test, type = "prob")$Si
+perfMRLogTe <- prediction(prMRLogTe, MUERE_test$MUERE) %>%
+performance(measure = "tpr", x.measure = "fpr")
+
+### AUC- datos training
+P_MRLogTr   <- predict(cv_MRLogTr, MUERE_train, type = "prob")$Si
+pre_MRLogTr <- prediction(P_MRLogTr,MUERE_train$MUE_D)
+AUC_MRLogTr <- performance(pre_MRLogTr,"auc")
+AUC_MRLogTr1 <- unlist(slot(AUC_MRLogTr,"y.values"))
+AUC_MRLogTr2 <- paste("AUC_AD Training =",as.character(round(AUC_MRLogTr1,4)))
+
+### AUC- datos testing
+P_MRLogTe  <- predict(cv_MRLogTr, MUERE_test, type = "prob")$Si
+pre_MRLogTe <- prediction(P_MRLogTe,MUERE_test$MUE_D)
+AUC_MRLogTe  <- performance(pre_MRLogTe,"auc")
+AUC_MRLogTe1 <- unlist(slot(AUC_MRLogTe,"y.values"))
+AUC_MRLogTe2 <- paste("AUC_AD Testing =",as.character(round(AUC_MRLogTe1,4)))
+
+### Curva ROC - datos training vs datos testing
+plot(perfMRLogTr, main="Curva ROC - Regresión Logística utilizando base Training vs Testing", 
+     col = "green3", lty = 1,cex=1.1)
+plot(perfMRLogTe, add = TRUE, col = "red2",lty=2)
+legend("bottomright",
+legend = c(AUC_MRLogTr2,AUC_MRLogTe2),
+col = c("green3","red2"), lty = c(2,1,1), cex = 0.8)
+```
+
+
+### III - Modelo Predictivo Árbol de Decisiones - Clasificación variable MUERE
+
+## III.1a - Definición Modelo Predictivo Arbol de Decisiones 1 - Base Training (MADTr) 
+```{r MADTr, echo=FALSE}
+ctrl <- list(cp = 0, minbucket = 1, maxdepth =5)
+MADTr <- rpart(MUERE ~ EDAD + factor(SEXO) + factor(DIABETES) + 
+               factor(HIPERTENSION) + factor(CARDIOVASCULAR) + factor(OBESIDAD) +
+               factor(NEUMONIA) + factor(ASMA) + factor(EPOC) + factor(OTRA_COM) + 
+               factor(RENAL_CRONICA) + factor(INMUSUPR) + factor(TIPO_PACIENTE) + 
+               factor(UCI) + factor(CLASIFICACION_FINAL)+ factor(ORIGEN) + 
+               factor(TOMA_MUESTRA_LAB) + factor(TOMA_MUESTRA_ANTIGENO) + 
+               factor(SECTOR), data=MUERE_train, control = ctrl)
+summary(MADTr)
+```
+
+## III.1b - Definición Modelo Predictivo Arbol de Decisiones 2 - Base Testing (MADTe) 
+```{r MADTe, echo=FALSE}
+ctrl <- list(cp = 0, minbucket = 1, maxdepth =5)
+MADTe <- rpart(MUERE ~ EDAD + factor(SEXO) + factor(DIABETES) + 
+               factor(HIPERTENSION) + factor(CARDIOVASCULAR) + factor(OBESIDAD) +
+               factor(NEUMONIA) + factor(ASMA) + factor(EPOC) + factor(OTRA_COM) + 
+               factor(RENAL_CRONICA) + factor(INMUSUPR) + factor(TIPO_PACIENTE) + 
+               factor(UCI) + factor(CLASIFICACION_FINAL)+ factor(ORIGEN) + 
+               factor(TOMA_MUESTRA_LAB) + factor(TOMA_MUESTRA_ANTIGENO) + 
+               factor(SECTOR),
+            data=MUERE_test, control = ctrl)
+summary(MADTe)
+```
+## III.2 - Gráfico de las variables VIP - Modelo de Arbol de Decisiones
+
+Con los gráficos VIP se valida la importancia para los modelos de clasificación bajo la metodología de árbol de decisiones desarrollados utilizando las bases de datos training y testing, la importancia de las variables debería ser la misma para después aplicar la metodología de validación cruzada con la definición de las mismas variables involucradas.
+
+```{r VIPMR, echo=FALSE}
+vip4 <- vip(MADTr, num_features = 20)
+vip5 <- vip(MADTe, num_features = 20)
+grid.arrange(vip4, vip5, nrow = 1)
+```
+
+## III.3 - Definición de la Validación Cruzada  - Base Training (cv_MAD)
+```{r cv_MADTr, echo=FALSE}
+set.seed(123)
+ctrl <- list(cp = 0, minbucket = 1, maxdepth =5)
+cv_MADTr <- train(MUERE ~ EDAD + factor(SEXO) + factor(DIABETES) +
+                  factor(HIPERTENSION) + factor(CARDIOVASCULAR) + factor(OBESIDAD) +
+                  factor(NEUMONIA) + factor(ASMA) + factor(EPOC) + factor(OTRA_COM) + 
+                  factor(RENAL_CRONICA) + factor(INMUSUPR) + factor(TIPO_PACIENTE) +
+                  factor(UCI) + factor(CLASIFICACION_FINAL)+ factor(ORIGEN) +  
+                  factor(TOMA_MUESTRA_LAB) + factor(TOMA_MUESTRA_ANTIGENO) +
+                  factor(SECTOR), data = MUERE_train, method = "rpart", control = ctrl,
+                  trControl =trainControl(method = "cv",number = 10))
+cv_MADTr
+```
+
+
+## III.3c - Gráfico de la Validación Cruzada  - Base Training (cv_MADTr)
+```{r}
+plot(cv_MADTr, main="Validación Cruzada - Arbol de Decisiones - Training", col="green")
+```
+
+## III.3c - Gráfico de las variables VIP - Modelo de Arbol de Decisiones (MADTr y MADTe)
+```{r VIPMAD, echo=FALSE}
+vip6 <- vip(MADTr, num_features = 30)
+vip7 <- vip(MADTe, num_features = 30)
+
+grid.arrange(vip6, vip6, nrow = 1)
+vip8 <- vip(cv_MADTr, num_features = 30,col="red")
+vip8
+```
+
+## III.4 - Tabla de Medidad de Rendimiento de la validación cruzada de cv_MRLogTr y cv_MRLogTe
+```{r TabMed2, echo=FALSE}
+TabMed2 <- summary(resamples(list("MRLogTr" = cv_MRLogTr, "MADTr" = cv_MADTr)))$statistics
+TabMed2
+```
+## III.5 - Matriz de Confusión - Modelo de Arbol de Decisiones (cv_MADTr con la base training) y cv_MADTr con la base de datos testing) 
+
+Con este paso se verifica el nivel de predicción del modelo óptimo resultante de la validación cruzada desarrollado con la base de entrenamiento o aprendizaje training y este mismo modelo se valida con la base de prueba testing y se verifican los dos resultados de las 2 matrices de confusión, las cuales deben mostrar valores muy similares para validar el desarrollo del modelo predictivo óptimo obtenido en la validación cruzada. Idealmente también deberían compararse con las matrices de confusión obtenidas con los modelos de regresión logística.
+
+```{r MCMAD_Tr, echo=FALSE}
+# Construcción de la Matriz de Confusión con la base de datos training
+P_MADTr <- predict(cv_MADTr, MUERE_train)
+T_MADTr <- data.frame("Prediccion"=P_MADTr,"Observacion"=factor(MUERE_train$MUERE))
+T_MADTr2 <- table(T_MADTr$Prediccion, T_MADTr$Observacion)
+Con_MADTr <- confusionMatrix(T_MADTr2)
+Con_MADTr
+```
+
+```{r MCMAD_Te, echo=FALSE}
+# Construcción de la Matriz de Confusión con la base de datos testing
+P_MADTe <- predict(cv_MADTr, MUERE_test)
+T_MADTe <- data.frame("Prediccion"=P_MADTe,"Observacion"=factor(MUERE_test$MUERE))
+T_MADTe2 <- table(T_MADTe$Prediccion, T_MADTe$Observacion)
+Con_MADTe <- confusionMatrix(T_MADTe2)
+Con_MADTe
+```
+
+## III.6 - Curva ROC y AUC  (cv_MADTr)
+
+En este proceso se encuentra la curva ROC y el AUC, con el modelo óptimo obtenido en la cv_MADTr utilizando la base training y la base testing, nuevamente se deben comparar los resultados obtenidos y verificar que estos resultados sean muy parecidos.
+
+```{r ROC_MAD, echo=FALSE}
+### Curva ROC - datos training
+prMADTr <- predict(cv_MADTr, MUERE_train, type = "prob")$Si
+perfMADTr <- prediction(prMADTr, MUERE_train$MUERE) %>%
+performance(measure = "tpr", x.measure = "fpr")
+
+### Curva ROC - datos testing
+prMADTe <- predict(cv_MADTr, MUERE_test, type = "prob")$Si
+perfMADTe <- prediction(prMADTe, MUERE_test$MUERE) %>%
+performance(measure = "tpr", x.measure = "fpr")
+
+### AUC- datos training
+P_MADTr   <- predict(cv_MADTr, MUERE_train, type = "prob")$Si
+pre_MADTr <- prediction(P_MADTr,MUERE_train$MUE_D)
+AUC_MADTr <- performance(pre_MADTr,"auc")
+AUC_MADTr1 <- unlist(slot(AUC_MADTr,"y.values"))
+AUC_MADTr2 <- paste("AUC_AD Training =",as.character(round(AUC_MADTr1,4)))
+
+### AUC- datos testing
+P_MADTe  <- predict(cv_MADTr, MUERE_test, type = "prob")$Si
+pre_MADTe <- prediction(P_MADTe,MUERE_test$MUE_D)
+AUC_MADTe  <- performance(pre_MADTe,"auc")
+AUC_MADTe1 <- unlist(slot(AUC_MADTe,"y.values"))
+AUC_MADTe2 <- paste("AUC_AD Testing =",as.character(round(AUC_MADTe1,4)))
+
+### Curva ROC - datos training vs datos testing
+plot(perfMRLogTr, main="Curva ROC - Regresión Logística utilizando base Training vs Testing", 
+     col = "green3", lty = 1,cex=1.1)
+plot(perfMRLogTe, add = TRUE, col = "red2",lty=2)
+plot(perfMADTr, add = TRUE, col = "blue2",lty=2)
+plot(perfMADTe, add = TRUE, col = "orange2",lty=2)
+legend("bottomright",
+legend = c(AUC_MRLogTr2,AUC_MRLogTe2,AUC_MADTr2,AUC_MADTe2),
+col = c("green3","red2","blue2","orange2"), lty = c(2,1,2,1), cex = 0.8)
+```
+
+
+### V - Modelo Predictivo Random Forest - Clasificación variable MUERE
+
+## V.1a - Definición Modelo Predictivo Random Forest 1 - Base Training (MRFTr) 
+```{r MRFTr, echo=FALSE}
+set.seed(123)
+MRFTr <- randomForest(factor(MUERE)~ EDAD + factor(SEXO) + factor(DIABETES) + 
+              factor(HIPERTENSION) + factor(CARDIOVASCULAR) + factor(OBESIDAD) +
+              factor(NEUMONIA) + factor(ASMA) + factor(EPOC) + factor(OTRA_COM) +
+              factor(RENAL_CRONICA) + factor(INMUSUPR) + factor(TIPO_PACIENTE) +
+              factor(UCI) + factor(CLASIFICACION_FINAL)+ factor(ORIGEN) +
+              factor(TOMA_MUESTRA_LAB)+ factor(TOMA_MUESTRA_ANTIGENO)+
+              factor(SECTOR), data = MUERE_train, ntree = 10, mtry = 3)
+summary(MRFTr)
+```
+## V.2a - Definición del Error EOOB Random Forest 1 - Base Training (MRFTr) 
+
+```{r EOOB, echo=FALSE}
+oob.err.data <- data.frame(Trees = rep(1:nrow(MRFTr$err.rate), 3),
+Type = rep(c("OOB","No","Si"), each = nrow(MRFTr$err.rate)),
+Error = c(MRFTr$err.rate[,"OOB"], MRFTr$err.rate[,"No"],
+MRFTr$err.rate[,"Si"]))
+ggplot(data = oob.err.data, aes(x = Trees, y= Error))+ geom_line(aes(color=Type))
+```
+
+## IV.1b - Definición Modelo Predictivo Random Forest 2 - Base Testing (MRFTe) 
+```{r MRF_Te, echo=FALSE}
+set.seed(123)
+r1 <- MUERE_train
+m2 <- tuneRF(x = data.frame(cbind(r1$EDAD, factor(r1$SEXO),factor(r1$DIABETES),
+            factor(r1$HIPERTENSION) , factor(r1$CARDIOVASCULAR) , factor(r1$OBESIDAD) ,
+            factor(r1$NEUMONIA) , factor(r1$ASMA) , factor(r1$EPOC) , factor(r1$OTRA_COM) ,
+            factor(r1$RENAL_CRONICA) , factor(r1$INMUSUPR) , factor(r1$TIPO_PACIENTE) ,
+            factor(r1$UCI) , factor(r1$CLASIFICACION_FINAL), factor(r1$ORIGEN),
+            factor(r1$TOMA_MUESTRA_LAB), factor(r1$TOMA_MUESTRA_ANTIGENO),
+            factor(r1$SECTOR))), y = factor(r1$MUERE), ntreeTry = 20, mtryStart = 3,
+stepFactor = 1.5, improve = 0.01, trace = FALSE)
+```
+
+
+## III.2 - Gráficas de los Modelo de Arbol de decisiones - (MADTr y MADTe) 
+```{r Graf_MADTr, echo=FALSE}
+prediction <- predict(MRFTr, newdata = MUERE_train)
+Tab_RF_1 <- data.frame("Prediccion"=prediction,"Observacion"=factor(MUERE_train$MUERE))
+Tab_RF_1 <- table(Tab_RF_1$Prediccion, Tab_RF_1$Observacion)
+confusionMatrix(Tab_RF_1)
+importance(MRFTr)
+varImpPlot(MRFTr,col="darkred",main="Grafico Importancia de Variables",
+font=2, cex=1, pch=20)
+#varUsed(MRFTr,by.tree=TRUE)
+```
